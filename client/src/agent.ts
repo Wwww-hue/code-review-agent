@@ -21,13 +21,13 @@ const MAX_RETRIES = 1;
 
 export async function runAgent(
   originalCode: string,
+  rules: Record<string, any>,
   onStep?: (step: AgentStep) => void,
 ): Promise<AgentResult> {
   const steps: AgentStep[] = [];
   let currentCode = originalCode;
 
-  // 第 0 步：初始校验
-  let errors = await lintCode(currentCode);
+  let errors = await lintCode(currentCode, rules);
   const initialStep: AgentStep = {
     index: 0,
     type: "lint",
@@ -48,14 +48,11 @@ export async function runAgent(
     };
   }
 
-  // 循环修复
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
-    // 调 LLM 修复
     const fixed = await fixWithLLM(currentCode, errors);
     currentCode = fixed;
 
-    // 再校验
-    errors = await lintCode(currentCode);
+    errors = await lintCode(currentCode, rules);
     const step: AgentStep = {
       index: steps.length,
       type: "fix",
@@ -76,7 +73,6 @@ export async function runAgent(
       };
     }
 
-    // 超过重试次数就退出
     if (attempt > MAX_RETRIES) {
       break;
     }

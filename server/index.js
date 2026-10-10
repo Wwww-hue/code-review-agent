@@ -24,7 +24,9 @@ app.post("/lint", (req, res) => {
   }
 
   // 合并规则：用户传的覆盖默认
-  const finalRules = { ...DEFAULT_RULES, ...(rules || {}) };
+  // server/index.js
+  const finalRules =
+    rules && Object.keys(rules).length > 0 ? rules : DEFAULT_RULES;
 
   try {
     const messages = linter.verify(code, {

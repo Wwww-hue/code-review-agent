@@ -4,6 +4,12 @@ import ReactDiffViewer from "react-diff-viewer-continued";
 import { runAgent, type AgentResult, type AgentStep } from "./agent";
 import { StepTimeline } from "./StepTimeline";
 import { loadHistory, saveHistory, type HistoryItem } from "./history";
+import {
+  AVAILABLE_RULES,
+  loadRulePrefs,
+  saveRulePrefs,
+  buildRules,
+} from "./rules";
 
 const DEFAULT_CODE = `var x = 1
 console.log(x)
@@ -18,10 +24,11 @@ function App() {
   const [steps, setSteps] = useState<AgentStep[]>([]);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [rulePrefs, setRulePrefs] = useState<Record<string, boolean>>({});
 
-  // 初始化时从 localStorage 读历史
   useEffect(() => {
     setHistory(loadHistory());
+    setRulePrefs(loadRulePrefs());
   }, []);
 
   const handleReview = async () => {
@@ -29,11 +36,10 @@ function App() {
     setSteps([]);
     setResult(null);
     try {
-      const r = await runAgent(code, (step) => {
+      const r = await runAgent(code, buildRules(rulePrefs), (step) => {
         setSteps((prev) => [...prev, step]);
       });
       setResult(r);
-      // 审查成功后写历史
       setHistory(saveHistory(r));
     } catch (e) {
       alert("审查失败：" + (e as Error).message);
@@ -42,7 +48,6 @@ function App() {
     }
   };
 
-  // 点击历史项，回填代码和结果
   const handleHistoryClick = (item: HistoryItem) => {
     setCode(item.originalCode);
     setResult({
@@ -58,7 +63,7 @@ function App() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      {/* 侧边栏：历史记录 */}
+      {/* 侧边栏 */}
       <aside
         style={{
           width: 240,
@@ -99,6 +104,37 @@ function App() {
       {/* 主区域 */}
       <main style={{ flex: 1, padding: 20, fontFamily: "system-ui" }}>
         <h1>代码审查 Agent</h1>
+
+        {/* 规则面板 */}
+        <div
+          style={{
+            marginBottom: 12,
+            padding: 12,
+            border: "1px solid #ddd",
+            borderRadius: 6,
+            background: "#fff",
+          }}
+        >
+          <strong style={{ display: "block", marginBottom: 8 }}>
+            ESLint 规则
+          </strong>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            {AVAILABLE_RULES.map((r) => (
+              <label key={r.id} style={{ fontSize: 13, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={rulePrefs[r.id] ?? false}
+                  onChange={(e) => {
+                    const next = { ...rulePrefs, [r.id]: e.target.checked };
+                    setRulePrefs(next);
+                    saveRulePrefs(next);
+                  }}
+                />{" "}
+                {r.label}
+              </label>
+            ))}
+          </div>
+        </div>
 
         <Editor
           height="400px"
