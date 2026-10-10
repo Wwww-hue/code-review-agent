@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
+import ReactDiffViewer from "react-diff-viewer-continued";
 import { runAgent, type AgentResult, type AgentStep } from "./agent";
+import { StepTimeline } from "./StepTimeline";
 
 const DEFAULT_CODE = `var x = 1
 console.log(x)
@@ -49,26 +51,25 @@ function App() {
         </button>
       </div>
 
-      {/* 临时展示 steps 和 result，Phase 6、7 会替换成正式 UI */}
-      {steps.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <h3>执行过程</h3>
-          <ul>
-            {steps.map((s) => (
-              <li key={s.index}>
-                第 {s.index} 步 [{s.type}]：{s.errors.length} 个报错
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* Phase 7：时间线 */}
+      <StepTimeline steps={steps} />
 
+      {/* Phase 6：diff 展示 */}
       {result && (
         <div style={{ marginTop: 20 }}>
-          <h3>结果</h3>
-          <p>成功：{result.success ? "✅" : "❌"}</p>
-          <p>尝试次数：{result.attempts}</p>
-          <p>剩余报错：{result.finalErrors.length}</p>
+          <h3>
+            修复结果：
+            {result.success
+              ? "✅ 全部通过"
+              : `⚠️ 仍有 ${result.finalErrors.length} 个问题`}
+            （尝试 {result.attempts} 次）
+          </h3>
+          <ReactDiffViewer
+            oldValue={result.originalCode}
+            newValue={result.fixedCode}
+            splitView={true}
+            useDarkMode={false}
+          />
         </div>
       )}
     </div>
