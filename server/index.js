@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { Linter } from "eslint";
+import prettier from "prettier"; //第二个验证器
 
 const app = express();
 app.use(cors());
@@ -71,6 +72,25 @@ app.post("/fix", (req, res) => {
       },
     });
     res.json({ fixed: result.output, changed: result.fixed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+//prettier验证
+app.post("/format-check", async (req, res) => {
+  const { code } = req.body;
+
+  if (typeof code !== "string") {
+    return res.status(400).json({ error: "code must be a string" });
+  }
+
+  try {
+    const formatted = await prettier.format(code, { parser: "babel" });
+    res.json({
+      formatted,
+      isFormatted: formatted.trim() === code.trim(),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

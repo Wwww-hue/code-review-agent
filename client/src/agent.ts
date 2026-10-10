@@ -1,4 +1,4 @@
-import { lintCode, autoFix, type LintMessage } from "./api";
+import { lintCode, autoFix, checkFormat, type LintMessage } from "./api";
 import { fixWithLLM, callLLMWithTools } from "./llm";
 import { AGENT_TOOLS } from "./tools";
 
@@ -22,33 +22,30 @@ export interface AgentResult {
 const MAX_LOOPS = 8;
 const MAX_FIXES = 2;
 
-const SYSTEM_PROMPT = `你是一个代码审查 Agent。你的任务是检查代码的 ESLint 问题并修复。
+const SYSTEM_PROMPT = `你是一个代码审查 Agent。你的任务是检查代码的 ESLint 问题和格式。
 
 你有以下工具：
-- run_eslint：检查代码，返回报错
+- run_eslint：检查代码，返回 ESLint 报错
 - auto_fix：ESLint 自动修复（机械问题优先用它，零成本）
 - fix_code：LLM 手工修复（复杂逻辑问题用它，成本高）
+- check_format：用 Prettier 检查格式（ESLint 通过后调用）
 - finish：审查完成时调用
 
-修复策略：
-- 机械问题（缺分号、引号、缩进）优先调 auto_fix
-- auto_fix 没解决或问题涉及逻辑，再调 fix_code
-- 每次修复后必须用 run_eslint 验证
-
-严格按以下流程：
+工作流程：
 1. 调 run_eslint 检查代码
-2. 看结果：
-   - 报错数为 0 → 立即调 finish，success=true
-   - 报错数 > 0 且是第一次修复 → 必须调 auto_fix
-   - auto_fix 后仍有报错 → 调 fix_code
-   - 修复次数 >= 2 → 立即调 finish，success=false
-3. 修复后回到第 1 步
-4. 禁止使用 eslint-disable 注释来绕过报错
+2. 如果有报错：
+   - 第一次修复先调 auto_fix
+   - auto_fix 后仍有报错，调 fix_code
+   - 修复后回到第 1 步
+3. ESLint 无报错后，调 check_format 检查格式
+4. 如果 isFormatted=false，调 auto_fix 或 fix_code 格式化代码
+5. 格式也通过后，调 finish，success=true
 
 关键规则：
-- 只要 run_eslint 返回 0 个报错，你必须立即调 finish
-- 修复次数达到 2 次后，无论结果如何都必须调 finish
-- 你必须在 6 步内结束`;
+- ESLint 和格式都通过才算成功
+- 禁止使用 eslint-disable 注释绕过报错
+- 最多修复 2 次 LLM 修复，超过就 finish
+- 你必须在 8 步内结束`;
 
 export async function runAgent(
   originalCode: string,
@@ -117,7 +114,25 @@ export async function runAgent(
         finalErrors = errors;
 
         if (errors.length === 0) {
-          return finish(true, args.code, []);
+          // ESLint 通过，检查格式
+          const fmt = await checkFormat(args.code);
+          const fmtStep: AgentStep = {
+            index: steps.length,
+            type: "lint",
+            tool: "check_format",
+            errors: [],
+            code: args.code,
+          };
+          steps.push(fmtStep);
+          onStep?.(fmtStep);
+
+          if (fmt.isFormatted) {
+            // ESLint 和格式都通过，结束
+            return finish(true, args.code, []);
+          } else {
+            // 格式不对，把格式化后的代码作为结果，直接结束（或让 LLM 再处理）
+            return finish(true, fmt.formatted, []);
+          }
         }
 
         if (fixCount >= MAX_FIXES) {

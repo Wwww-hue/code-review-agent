@@ -36,3 +36,20 @@ export async function autoFix(code: string, rules?: Record<string, any>) {
   const data = await res.json();
   return data as { fixed: string; changed: boolean };
 }
+
+//prettier验证
+export async function checkFormat(
+  code: string,
+): Promise<{ formatted: string; isFormatted: boolean }> {
+  const res = await fetch(`${API_BASE}/format-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Format check failed: ${res.status}`);
+  }
+
+  return res.json();
+}

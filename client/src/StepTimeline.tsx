@@ -26,6 +26,9 @@ export function StepTimeline({ steps }: Props) {
                 return "⚡ 自动修复（确定性）";
               case "fix_code":
                 return "🤖 LLM 修复";
+              case "check_format":
+                return "📐 Prettier 校验";
+
               default:
                 return step.type === "lint" ? "🔍 ESLint 校验" : "🔧 修复";
             }
