@@ -48,6 +48,34 @@ app.post("/lint", (req, res) => {
   }
 });
 
+app.post("/fix", (req, res) => {
+  const { code, rules } = req.body;
+  if (typeof code !== "string") {
+    return res.status(400).json({ error: "code must be a string" });
+  }
+
+  const finalRules =
+    rules && Object.keys(rules).length > 0 ? rules : DEFAULT_RULES;
+
+  try {
+    const result = linter.verifyAndFix(code, {
+      rules: finalRules,
+      languageOptions: {
+        ecmaVersion: 2021,
+        sourceType: "module",
+        globals: {
+          console: "readonly",
+          window: "readonly",
+          document: "readonly",
+        },
+      },
+    });
+    res.json({ fixed: result.output, changed: result.fixed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/health", (req, res) => {
   res.json({ ok: true });
 });

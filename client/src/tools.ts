@@ -17,6 +17,21 @@ export const AGENT_TOOLS = [
   {
     type: "function" as const,
     function: {
+      name: "auto_fix",
+      description:
+        "用 ESLint 的自动修复功能修复代码。适合机械性问题（缺分号、引号、缩进等）。零成本、确定性，优先于 fix_code 使用。",
+      parameters: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "要修复的代码" },
+        },
+        required: ["code"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "fix_code",
       description:
         "根据 ESLint 报错修复代码，返回修复后的代码。只有在 run_eslint 返回了报错时才调用。",

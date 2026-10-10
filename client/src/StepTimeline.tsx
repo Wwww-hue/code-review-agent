@@ -18,6 +18,18 @@ export function StepTimeline({ steps }: Props) {
           const isLint = step.type === "lint";
           const errorCount = step.errors.length;
           const isOpen = expanded === step.index;
+          const toolLabel = (() => {
+            switch (step.tool) {
+              case "run_eslint":
+                return "🔍 ESLint 校验";
+              case "auto_fix":
+                return "⚡ 自动修复（确定性）";
+              case "fix_code":
+                return "🤖 LLM 修复";
+              default:
+                return step.type === "lint" ? "🔍 ESLint 校验" : "🔧 修复";
+            }
+          })();
 
           return (
             <div
@@ -33,9 +45,7 @@ export function StepTimeline({ steps }: Props) {
             >
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <strong>
-                  {isLint
-                    ? `🔍 第 ${step.index + 1} 步：ESLint 校验`
-                    : `🔧 第 ${step.index + 1} 步：LLM 修复`}
+                  第 {step.index + 1} 步：{toolLabel}
                 </strong>
                 <span style={{ color: errorCount === 0 ? "green" : "orange" }}>
                   {errorCount === 0 ? "✅ 无报错" : `⚠️ ${errorCount} 个报错`}

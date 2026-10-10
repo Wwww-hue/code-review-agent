@@ -25,3 +25,14 @@ export async function lintCode(
   const data = await res.json();
   return data.messages;
 }
+
+export async function autoFix(code: string, rules?: Record<string, any>) {
+  const res = await fetch(`${API_BASE}/fix`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, rules }),
+  });
+  if (!res.ok) throw new Error(`Auto fix failed: ${res.status}`);
+  const data = await res.json();
+  return data as { fixed: string; changed: boolean };
+}
