@@ -1,7 +1,6 @@
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
-import { lintCode, type LintMessage } from "./api";
-import { fixWithLLM } from "./llm";
+import { runAgent, type AgentResult, type AgentStep } from "./agent";
 
 const DEFAULT_CODE = `var x = 1
 console.log(x)
@@ -12,32 +11,23 @@ function foo() {
 
 function App() {
   const [code, setCode] = useState(DEFAULT_CODE);
-  const [errors, setErrors] = useState<LintMessage[]>([]);
+  const [result, setResult] = useState<AgentResult | null>(null);
+  const [steps, setSteps] = useState<AgentStep[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Phase 3：调 ESLint
-  const handleLint = async () => {
+  const handleReview = async () => {
     setLoading(true);
+    setSteps([]);
+    setResult(null);
     try {
-      const msgs = await lintCode(code);
-      setErrors(msgs);
+      const r = await runAgent(code, (step) => {
+        setSteps((prev) => [...prev, step]);
+      });
+      setResult(r);
     } catch (e) {
-      alert("校验失败：" + (e as Error).message);
+      alert("审查失败：" + (e as Error).message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Phase 4 临时测试：调 LLM 修复
-  const handleFixTest = async () => {
-    try {
-      const msgs = await lintCode(code);
-      console.log("ESLint 报错：", msgs);
-      const fixed = await fixWithLLM(code, msgs);
-      console.log("修复后：", fixed);
-      alert("修复结果已打印到控制台，按 F12 查看");
-    } catch (e) {
-      alert("修复失败：" + (e as Error).message);
     }
   };
 
@@ -53,23 +43,33 @@ function App() {
         options={{ minimap: { enabled: false }, fontSize: 14 }}
       />
 
-      <div style={{ marginTop: 12, display: "flex", gap: 12 }}>
-        <button onClick={handleLint} disabled={loading}>
-          {loading ? "校验中..." : "运行 ESLint"}
-        </button>
-        <button onClick={handleFixTest} disabled={loading}>
-          测试 LLM 修复
+      <div style={{ marginTop: 12 }}>
+        <button onClick={handleReview} disabled={loading}>
+          {loading ? "审查中..." : "开始审查"}
         </button>
       </div>
 
-      {errors.length > 0 && (
-        <ul style={{ marginTop: 12 }}>
-          {errors.map((e, i) => (
-            <li key={i}>
-              第 {e.line} 行：{e.message}（{e.ruleId}）
-            </li>
-          ))}
-        </ul>
+      {/* 临时展示 steps 和 result，Phase 6、7 会替换成正式 UI */}
+      {steps.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <h3>执行过程</h3>
+          <ul>
+            {steps.map((s) => (
+              <li key={s.index}>
+                第 {s.index} 步 [{s.type}]：{s.errors.length} 个报错
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 20 }}>
+          <h3>结果</h3>
+          <p>成功：{result.success ? "✅" : "❌"}</p>
+          <p>尝试次数：{result.attempts}</p>
+          <p>剩余报错：{result.finalErrors.length}</p>
+        </div>
       )}
     </div>
   );

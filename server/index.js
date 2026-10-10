@@ -32,6 +32,11 @@ app.post("/lint", (req, res) => {
       languageOptions: {
         ecmaVersion: 2021,
         sourceType: "module",
+        globals: {
+          console: "readonly",
+          window: "readonly",
+          document: "readonly",
+        },
       },
     });
 
