@@ -49,6 +49,17 @@ export function StepTimeline({ steps }: Props) {
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <strong>
                   第 {step.index + 1} 步：{toolLabel}
+                  {step.rolledBack && (
+                    <span
+                      style={{
+                        color: "red",
+                        marginLeft: 8,
+                        fontWeight: "normal",
+                      }}
+                    >
+                      ↩ 已回滚
+                    </span>
+                  )}
                 </strong>
                 <span style={{ color: errorCount === 0 ? "green" : "orange" }}>
                   {errorCount === 0 ? "✅ 无报错" : `⚠️ ${errorCount} 个报错`}

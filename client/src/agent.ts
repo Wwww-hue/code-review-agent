@@ -8,6 +8,7 @@ export interface AgentStep {
   tool?: string;
   errors: LintMessage[];
   code: string;
+  rolledBack?: boolean; // ← 新增：这一步是否触发了回滚
 }
 
 export interface AgentResult {
@@ -17,9 +18,10 @@ export interface AgentResult {
   attempts: number;
   finalErrors: LintMessage[];
   success: boolean;
+  rollbackCount: number; // ← 新增：总共回滚了几次
 }
 
-const MAX_LOOPS = 8;
+const MAX_LOOPS = 10;
 const MAX_FIXES = 2;
 
 const SYSTEM_PROMPT = `你是一个代码审查 Agent。你的任务是检查代码的 ESLint 问题和格式。
@@ -28,7 +30,6 @@ const SYSTEM_PROMPT = `你是一个代码审查 Agent。你的任务是检查代
 - run_eslint：检查代码，返回 ESLint 报错
 - auto_fix：ESLint 自动修复（机械问题优先用它，零成本）
 - fix_code：LLM 手工修复（复杂逻辑问题用它，成本高）
-- check_format：用 Prettier 检查格式（ESLint 通过后调用）
 - finish：审查完成时调用
 
 工作流程：
@@ -37,12 +38,11 @@ const SYSTEM_PROMPT = `你是一个代码审查 Agent。你的任务是检查代
    - 第一次修复先调 auto_fix
    - auto_fix 后仍有报错，调 fix_code
    - 修复后回到第 1 步
-3. ESLint 无报错后，调 check_format 检查格式
-4. 如果 isFormatted=false，调 auto_fix 或 fix_code 格式化代码
-5. 格式也通过后，调 finish，success=true
+3. ESLint 无报错后，系统会自动做格式检查
+4. 调 finish 结束
 
 关键规则：
-- ESLint 和格式都通过才算成功
+- 如果系统提示"回滚"，说明你上一次修复让报错变多了，必须换策略
 - 禁止使用 eslint-disable 注释绕过报错
 - 最多修复 2 次 LLM 修复，超过就 finish
 - 你必须在 8 步内结束`;
@@ -66,6 +66,14 @@ export async function runAgent(
   let finalErrors: LintMessage[] = [];
   let fixCount = 0;
   let loopCount = 0;
+  let rollbackCount = 0;
+
+  // ===== 回滚状态 =====
+  let bestCode = originalCode;
+  let bestErrorCount = Infinity;
+  let lastCode = originalCode;
+  let lastErrorCount = Infinity;
+  let lastTool = "none"; // 上一次用的修复工具，回滚时用于提示 LLM
 
   const finish = (success: boolean, code: string, errors: LintMessage[]) => ({
     originalCode,
@@ -74,6 +82,7 @@ export async function runAgent(
     attempts: fixCount,
     finalErrors: success ? [] : errors,
     success,
+    rollbackCount,
   });
 
   while (loopCount < MAX_LOOPS) {
@@ -100,45 +109,95 @@ export async function runAgent(
 
       if (name === "run_eslint") {
         const errors = await lintCode(args.code, rules);
-        toolResult = errors;
-        const step: AgentStep = {
-          index: steps.length,
-          type: "lint",
-          tool: "run_eslint",
-          errors,
-          code: args.code,
-        };
-        steps.push(step);
-        onStep?.(step);
-        finalCode = args.code;
-        finalErrors = errors;
+        const errorCount = errors.length;
 
-        if (errors.length === 0) {
-          // ESLint 通过，检查格式
-          const fmt = await checkFormat(args.code);
-          const fmtStep: AgentStep = {
+        // ===== 回滚判断：本次校验 vs 上一次修复前的校验 =====
+        let rolledBack = false;
+        if (errorCount >= lastErrorCount && lastErrorCount !== Infinity) {
+          // 退步了：回滚到 lastCode
+          rolledBack = true;
+          rollbackCount++;
+
+          // 记录回滚步骤（用当前代码，但标记 rolledBack）
+          const rbStep: AgentStep = {
             index: steps.length,
             type: "lint",
-            tool: "check_format",
-            errors: [],
+            tool: "run_eslint",
+            errors,
+            code: args.code,
+            rolledBack: true,
+          };
+          steps.push(rbStep);
+          onStep?.(rbStep);
+
+          // 反馈给 LLM：回滚 + 换策略
+          toolResult = {
+            errorCount,
+            rolledBack: true,
+            message: `你上一次用 ${lastTool} 修复后报错数从 ${lastErrorCount} 变成 ${errorCount}，没有进步。已回滚到 ${lastErrorCount} 个报错的版本。请换一种策略（如果上次用 auto_fix，这次用 fix_code；反之亦然）。`,
+            restoredCode: lastCode,
+          };
+
+          finalCode = lastCode;
+          finalErrors = errors;
+          // 回滚后 lastErrorCount 保持原值，等待 LLM 重新决策
+        } else {
+          // 进步或首次：接受
+          const step: AgentStep = {
+            index: steps.length,
+            type: "lint",
+            tool: "run_eslint",
+            errors,
             code: args.code,
           };
-          steps.push(fmtStep);
-          onStep?.(fmtStep);
+          steps.push(step);
+          onStep?.(step);
 
-          if (fmt.isFormatted) {
-            // ESLint 和格式都通过，结束
-            return finish(true, args.code, []);
-          } else {
-            // 格式不对，把格式化后的代码作为结果，直接结束（或让 LLM 再处理）
-            return finish(true, fmt.formatted, []);
+          finalCode = args.code;
+          finalErrors = errors;
+
+          // 更新 last
+          lastCode = args.code;
+          lastErrorCount = errorCount;
+
+          // 更新 best
+          if (errorCount < bestErrorCount) {
+            bestErrorCount = errorCount;
+            bestCode = args.code;
           }
-        }
 
-        if (fixCount >= MAX_FIXES) {
-          return finish(false, args.code, errors);
+          // ===== ESLint 通过：自动跑 Prettier =====
+          if (errorCount === 0) {
+            const fmt = await checkFormat(args.code);
+            const fmtStep: AgentStep = {
+              index: steps.length,
+              type: "lint",
+              tool: "check_format",
+              errors: [],
+              code: args.code,
+            };
+            steps.push(fmtStep);
+            onStep?.(fmtStep);
+
+            return finish(
+              true,
+              fmt.isFormatted ? args.code : fmt.formatted,
+              [],
+            );
+          }
+
+          // 达修复上限
+          if (fixCount >= MAX_FIXES) {
+            return finish(false, bestCode, errors);
+          }
+
+          toolResult = errors;
         }
       } else if (name === "auto_fix") {
+        // 记录修复前的快照
+        lastCode = args.code;
+        lastTool = "auto_fix";
+
         const { fixed } = await autoFix(args.code, rules);
         toolResult = fixed;
         const step: AgentStep = {
@@ -156,6 +215,10 @@ export async function runAgent(
           toolResult = { error: "已达到最大修复次数，请调用 finish 结束" };
         } else {
           fixCount++;
+          // 记录修复前的快照
+          lastCode = args.code;
+          lastTool = "fix_code";
+
           let parsedErrors: LintMessage[] = [];
           try {
             parsedErrors = JSON.parse(args.errors);
@@ -176,7 +239,7 @@ export async function runAgent(
           finalCode = fixed;
         }
       } else if (name === "finish") {
-        finalCode = args.code || finalCode;
+        finalCode = args.code || bestCode;
         finalSuccess = !!args.success;
         return finish(finalSuccess, finalCode, finalErrors);
       } else {
@@ -191,5 +254,6 @@ export async function runAgent(
     }
   }
 
-  return finish(finalErrors.length === 0, finalCode, finalErrors);
+  // 循环上限兜底：返回历史最优
+  return finish(bestErrorCount === 0, bestCode, finalErrors);
 }
