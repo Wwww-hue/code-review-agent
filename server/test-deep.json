@@ -1,0 +1,1 @@
+﻿{"code":"var x = 1\nfunction foo() {\n  if (true) { return 1 }\n  return 2\n}"}
