@@ -15,6 +15,7 @@ import {
   saveRulePrefs,
   buildRules,
 } from "./rules";
+import { ConvergenceChart } from "./ConvergenceChart";
 
 const DEFAULT_CODE = `var x = 1
 console.log(x)
@@ -159,9 +160,8 @@ function App() {
             {loading ? "审查中..." : "开始审查"}
           </button>
         </div>
-
+        <ConvergenceChart steps={steps} />
         <StepTimeline steps={steps} />
-
         {result && (
           <div style={{ marginTop: 20 }}>
             <h3>
