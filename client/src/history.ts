@@ -17,6 +17,8 @@ export interface HistoryItem {
   fixedCode: string;
   attempts: number;
   success: boolean;
+  rollbackCount: number;
+  durationMs: number;
 }
 
 export function computeStats(items: HistoryItem[]): Stats {
@@ -50,6 +52,8 @@ export function saveHistory(result: AgentResult): HistoryItem[] {
     fixedCode: result.fixedCode,
     attempts: result.attempts,
     success: result.success,
+    rollbackCount: result.rollbackCount,
+    durationMs: result.durationMs,
   };
   const next = [item, ...items].slice(0, MAX_ITEMS);
   localStorage.setItem(KEY, JSON.stringify(next));

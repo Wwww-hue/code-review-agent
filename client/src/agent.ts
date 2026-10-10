@@ -25,6 +25,7 @@ export interface AgentResult {
   finalErrors: LintMessage[];
   success: boolean;
   rollbackCount: number;
+  durationMs: number;
 }
 
 const MAX_LOOPS = 10;
@@ -62,6 +63,7 @@ export async function runAgent(
   // ===== 长期记忆 =====
   let memory = loadMemory();
   let lastStrategies: { ruleId: string; strategy: string }[] = [];
+  const startTime = Date.now();
 
   const allRuleIds = Object.keys(memory);
   const memoryHint = buildMemoryHint(memory, allRuleIds);
@@ -98,6 +100,7 @@ export async function runAgent(
     finalErrors: success ? [] : errors,
     success,
     rollbackCount,
+    durationMs: Date.now() - startTime,
   });
 
   while (loopCount < MAX_LOOPS) {

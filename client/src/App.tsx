@@ -16,6 +16,7 @@ import {
   buildRules,
 } from "./rules";
 import { ConvergenceChart } from "./ConvergenceChart";
+import { CostDashboard } from "./CostDashboard";
 
 const DEFAULT_CODE = `var x = 1
 console.log(x)
@@ -64,6 +65,8 @@ function App() {
       attempts: item.attempts,
       finalErrors: [],
       success: item.success,
+      rollbackCount: item.rollbackCount ?? 0,
+      durationMs: item.durationMs ?? 0,
     });
     setSteps([]);
   };
@@ -160,7 +163,8 @@ function App() {
             {loading ? "审查中..." : "开始审查"}
           </button>
         </div>
-        <ConvergenceChart steps={steps} />
+        <ConvergenceChart steps={steps} hasResult={!!result} />
+        <CostDashboard result={result} hasSteps={steps.length > 0} />
         <StepTimeline steps={steps} />
         {result && (
           <div style={{ marginTop: 20 }}>
