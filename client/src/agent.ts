@@ -1,6 +1,12 @@
 import { lintCode, autoFix, checkFormat, type LintMessage } from "./api";
 import { fixWithLLM, callLLMWithTools } from "./llm";
 import { AGENT_TOOLS } from "./tools";
+import {
+  loadMemory,
+  saveMemory,
+  recordStrategies,
+  buildMemoryHint,
+} from "./memory";
 
 export interface AgentStep {
   index: number;
@@ -8,7 +14,7 @@ export interface AgentStep {
   tool?: string;
   errors: LintMessage[];
   code: string;
-  rolledBack?: boolean; // ← 新增：这一步是否触发了回滚
+  rolledBack?: boolean;
 }
 
 export interface AgentResult {
@@ -18,7 +24,7 @@ export interface AgentResult {
   attempts: number;
   finalErrors: LintMessage[];
   success: boolean;
-  rollbackCount: number; // ← 新增：总共回滚了几次
+  rollbackCount: number;
 }
 
 const MAX_LOOPS = 10;
@@ -43,6 +49,7 @@ const SYSTEM_PROMPT = `你是一个代码审查 Agent。你的任务是检查代
 
 关键规则：
 - 如果系统提示"回滚"，说明你上一次修复让报错变多了，必须换策略
+- 如果系统提示"历史经验"，优先用高成功率的方案
 - 禁止使用 eslint-disable 注释绕过报错
 - 最多修复 2 次 LLM 修复，超过就 finish
 - 你必须在 8 步内结束`;
@@ -52,8 +59,16 @@ export async function runAgent(
   rules: Record<string, any>,
   onStep?: (step: AgentStep) => void,
 ): Promise<AgentResult> {
+  // ===== 长期记忆 =====
+  let memory = loadMemory();
+  let lastStrategies: { ruleId: string; strategy: string }[] = [];
+
+  const allRuleIds = Object.keys(memory);
+  const memoryHint = buildMemoryHint(memory, allRuleIds);
+
   const messages: any[] = [
     { role: "system", content: SYSTEM_PROMPT },
+    ...(memoryHint ? [{ role: "system", content: memoryHint }] : []),
     {
       role: "user",
       content: `请审查以下代码：\n\`\`\`javascript\n${originalCode}\n\`\`\``,
@@ -73,7 +88,7 @@ export async function runAgent(
   let bestErrorCount = Infinity;
   let lastCode = originalCode;
   let lastErrorCount = Infinity;
-  let lastTool = "none"; // 上一次用的修复工具，回滚时用于提示 LLM
+  let lastTool = "none";
 
   const finish = (success: boolean, code: string, errors: LintMessage[]) => ({
     originalCode,
@@ -111,14 +126,10 @@ export async function runAgent(
         const errors = await lintCode(args.code, rules);
         const errorCount = errors.length;
 
-        // ===== 回滚判断：本次校验 vs 上一次修复前的校验 =====
-        let rolledBack = false;
+        // ===== 回滚判断 =====
         if (errorCount >= lastErrorCount && lastErrorCount !== Infinity) {
-          // 退步了：回滚到 lastCode
-          rolledBack = true;
           rollbackCount++;
 
-          // 记录回滚步骤（用当前代码，但标记 rolledBack）
           const rbStep: AgentStep = {
             index: steps.length,
             type: "lint",
@@ -130,19 +141,23 @@ export async function runAgent(
           steps.push(rbStep);
           onStep?.(rbStep);
 
-          // 反馈给 LLM：回滚 + 换策略
+          // ===== 记录上一次修复的方案：失败 =====
+          if (lastStrategies.length > 0) {
+            memory = recordStrategies(memory, lastStrategies, false);
+            saveMemory(memory);
+            lastStrategies = [];
+          }
+
           toolResult = {
             errorCount,
             rolledBack: true,
-            message: `你上一次用 ${lastTool} 修复后报错数从 ${lastErrorCount} 变成 ${errorCount}，没有进步。已回滚到 ${lastErrorCount} 个报错的版本。请换一种策略（如果上次用 auto_fix，这次用 fix_code；反之亦然）。`,
+            message: `你上一次用 ${lastTool} 修复后报错数从 ${lastErrorCount} 变成 ${errorCount}，没有进步。已回滚到 ${lastErrorCount} 个报错的版本。请换一种方案。`,
             restoredCode: lastCode,
           };
 
           finalCode = lastCode;
           finalErrors = errors;
-          // 回滚后 lastErrorCount 保持原值，等待 LLM 重新决策
         } else {
-          // 进步或首次：接受
           const step: AgentStep = {
             index: steps.length,
             type: "lint",
@@ -156,17 +171,23 @@ export async function runAgent(
           finalCode = args.code;
           finalErrors = errors;
 
-          // 更新 last
+          // ===== 记录上一次修复的方案：成功 =====
+          if (lastStrategies.length > 0) {
+            const success = errorCount === 0;
+            memory = recordStrategies(memory, lastStrategies, success);
+            saveMemory(memory);
+            lastStrategies = [];
+          }
+
           lastCode = args.code;
           lastErrorCount = errorCount;
 
-          // 更新 best
           if (errorCount < bestErrorCount) {
             bestErrorCount = errorCount;
             bestCode = args.code;
           }
 
-          // ===== ESLint 通过：自动跑 Prettier =====
+          // ESLint 通过 → Prettier
           if (errorCount === 0) {
             const fmt = await checkFormat(args.code);
             const fmtStep: AgentStep = {
@@ -186,7 +207,6 @@ export async function runAgent(
             );
           }
 
-          // 达修复上限
           if (fixCount >= MAX_FIXES) {
             return finish(false, bestCode, errors);
           }
@@ -194,7 +214,6 @@ export async function runAgent(
           toolResult = errors;
         }
       } else if (name === "auto_fix") {
-        // 记录修复前的快照
         lastCode = args.code;
         lastTool = "auto_fix";
 
@@ -215,7 +234,6 @@ export async function runAgent(
           toolResult = { error: "已达到最大修复次数，请调用 finish 结束" };
         } else {
           fixCount++;
-          // 记录修复前的快照
           lastCode = args.code;
           lastTool = "fix_code";
 
@@ -225,18 +243,22 @@ export async function runAgent(
           } catch {
             parsedErrors = finalErrors;
           }
-          const fixed = await fixWithLLM(args.code, parsedErrors);
-          toolResult = fixed;
+
+          // ===== 新返回结构：{ code, strategies } =====
+          const result = await fixWithLLM(args.code, parsedErrors);
+          toolResult = result.code;
+          lastStrategies = result.strategies;
+
           const step: AgentStep = {
             index: steps.length,
             type: "fix",
             tool: "fix_code",
             errors: [],
-            code: fixed,
+            code: result.code,
           };
           steps.push(step);
           onStep?.(step);
-          finalCode = fixed;
+          finalCode = result.code;
         }
       } else if (name === "finish") {
         finalCode = args.code || bestCode;
@@ -254,6 +276,5 @@ export async function runAgent(
     }
   }
 
-  // 循环上限兜底：返回历史最优
   return finish(bestErrorCount === 0, bestCode, finalErrors);
 }
