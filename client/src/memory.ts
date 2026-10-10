@@ -5,7 +5,6 @@ export interface StrategyRecord {
   fail: number;
 }
 
-// ruleId -> 方案描述 -> 成功/失败次数
 export interface LongTermMemory {
   [ruleId: string]: Record<string, StrategyRecord>;
 }
@@ -23,7 +22,6 @@ export function saveMemory(mem: LongTermMemory) {
   localStorage.setItem(KEY, JSON.stringify(mem));
 }
 
-// 记录一批方案的结果
 export function recordStrategies(
   mem: LongTermMemory,
   strategies: { ruleId: string; strategy: string }[],
@@ -44,7 +42,15 @@ export function recordStrategies(
   return next;
 }
 
-// 生成给 LLM 的提示
+// ===== 置信度校准 =====
+const ALPHA = 1;
+const BETA = 1;
+const MIN_SAMPLES = 2;
+
+function smoothedRate(success: number, fail: number): number {
+  return (success + ALPHA) / (success + fail + ALPHA + BETA);
+}
+
 export function buildMemoryHint(
   mem: LongTermMemory,
   ruleIds: string[],
@@ -55,10 +61,10 @@ export function buildMemoryHint(
     if (!strategies) continue;
 
     const entries = Object.entries(strategies)
-      .filter(([, rec]) => rec.success + rec.fail >= 2) // 样本 >= 2
+      .filter(([, rec]) => rec.success + rec.fail >= MIN_SAMPLES)
       .map(([strategy, rec]) => ({
         strategy,
-        rate: rec.success / (rec.success + rec.fail),
+        rate: smoothedRate(rec.success, rec.fail),
         total: rec.success + rec.fail,
       }))
       .sort((a, b) => b.rate - a.rate);
@@ -66,16 +72,23 @@ export function buildMemoryHint(
     if (entries.length === 0) continue;
 
     const best = entries[0];
-    const worst = entries[entries.length - 1];
+    let line = `- ${ruleId}：优先"${best.strategy}"（可信成功率 ${Math.round(
+      best.rate * 100,
+    )}%，样本 ${best.total} 次）`;
 
-    let line = `- ${ruleId}：优先"${best.strategy}"（成功率 ${Math.round(best.rate * 100)}%，${best.total} 次）`;
-    if (worst.rate < 0.5 && worst.strategy !== best.strategy) {
-      line += `，避免"${worst.strategy}"（成功率 ${Math.round(worst.rate * 100)}%）`;
+    if (entries.length > 1) {
+      const worst = entries[entries.length - 1];
+      if (worst.rate < 0.5 && worst.strategy !== best.strategy) {
+        line += `，避免"${worst.strategy}"（可信成功率 ${Math.round(
+          worst.rate * 100,
+        )}%）`;
+      }
     }
+
     lines.push(line);
   }
 
   return lines.length > 0
-    ? `历史修复经验（供参考）：\n${lines.join("\n")}`
+    ? `历史修复经验（供参考，已做小样本校准）：\n${lines.join("\n")}`
     : "";
 }
