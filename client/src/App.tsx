@@ -212,12 +212,32 @@ function App() {
 
         {result && (
           <div style={{ marginTop: 20 }}>
-            <ReactDiffViewer
-              oldValue={result.originalCode}
-              newValue={result.fixedCode}
-              splitView={true}
-              useDarkMode={false}
-            />
+            <h3>
+              修复结果：
+              {result.success
+                ? "✅ 全部通过"
+                : `⚠️ 仍有 ${result.finalErrors.length} 个问题`}
+              （尝试 {result.attempts} 次）
+            </h3>
+
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(result.fixedCode);
+                alert("已复制修复后代码");
+              }}
+              style={{ marginTop: 8 }}
+            >
+              📋 复制
+            </button>
+
+            <div style={{ marginTop: 12 }}>
+              <ReactDiffViewer
+                oldValue={result.originalCode}
+                newValue={result.fixedCode}
+                splitView={true}
+                useDarkMode={false}
+              />
+            </div>
           </div>
         )}
       </main>

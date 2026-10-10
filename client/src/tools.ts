@@ -17,6 +17,21 @@ export const AGENT_TOOLS = [
   {
     type: "function" as const,
     function: {
+      name: "deep_check",
+      description:
+        "深度检查：跑 ESLint + AST 分析 + 复杂度检查。比 run_eslint 慢，但能发现死代码、未使用函数、高复杂度函数。适合代码较长、有多个函数的复杂场景。简单代码用 run_eslint 即可。",
+      parameters: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "要检查的代码" },
+        },
+        required: ["code"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "auto_fix",
       description:
         "用 ESLint 的自动修复功能修复代码。适合机械性问题（缺分号、引号、缩进等）。零成本、确定性，优先于 fix_code 使用。",

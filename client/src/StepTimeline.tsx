@@ -29,6 +29,8 @@ export function StepTimeline({ steps }: Props) {
                 return "🤖 LLM 修复";
               case "check_format":
                 return "📐 Prettier 校验";
+              case "deep_check":
+                return "🔬 深度检查";
               default:
                 return step.type === "lint" ? "🔍 校验" : "🔧 修复";
             }

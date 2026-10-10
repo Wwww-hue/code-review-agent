@@ -53,3 +53,26 @@ export async function checkFormat(
 
   return res.json();
 }
+
+export interface DeepCheckResult {
+  eslint: LintMessage[];
+  ast: { type: string; name?: string; message: string }[];
+  complexity: { level: number; message: string }[];
+}
+
+export async function deepCheck(
+  code: string,
+  rules?: Record<string, any>,
+): Promise<DeepCheckResult> {
+  const res = await fetch(`${API_BASE}/deep-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, rules }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Deep check failed: ${res.status}`);
+  }
+
+  return res.json();
+}
