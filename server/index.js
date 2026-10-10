@@ -1,11 +1,46 @@
 import express from "express";
 import cors from "cors";
+import { Linter } from "eslint";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-//先验证服务能否跑起来，再逐步加功能
+const linter = new Linter();
+
+// 默认规则集
+const DEFAULT_RULES = {
+  "no-unused-vars": "error",
+  "no-undef": "error",
+  semi: ["error", "always"],
+  "no-console": "warn",
+};
+
+app.post("/lint", (req, res) => {
+  const { code, rules } = req.body;
+
+  if (typeof code !== "string") {
+    return res.status(400).json({ error: "code must be a string" });
+  }
+
+  // 合并规则：用户传的覆盖默认
+  const finalRules = { ...DEFAULT_RULES, ...(rules || {}) };
+
+  try {
+    const messages = linter.verify(code, {
+      rules: finalRules,
+      languageOptions: {
+        ecmaVersion: 2021,
+        sourceType: "module",
+      },
+    });
+
+    res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
