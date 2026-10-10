@@ -34,8 +34,8 @@ export function StepTimeline({ steps }: Props) {
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <strong>
                   {isLint
-                    ? "🔍 第 0 步：初始校验"
-                    : `🔧 第 ${step.index} 步：LLM 修复后校验`}
+                    ? `🔍 第 ${step.index + 1} 步：ESLint 校验`
+                    : `🔧 第 ${step.index + 1} 步：LLM 修复`}
                 </strong>
                 <span style={{ color: errorCount === 0 ? "green" : "orange" }}>
                   {errorCount === 0 ? "✅ 无报错" : `⚠️ ${errorCount} 个报错`}

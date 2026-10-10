@@ -56,3 +56,29 @@ function extractCode(text: string): string {
   );
   return match ? match[1].trim() : text.trim();
 }
+
+export async function callLLMWithTools(
+  messages: any[],
+  tools: any[],
+): Promise<any> {
+  const res = await fetch(`${API_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages,
+      tools,
+      temperature: 0.2,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LLM 调用失败: ${res.status} ${text}`);
+  }
+
+  return res.json();
+}

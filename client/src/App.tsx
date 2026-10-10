@@ -3,7 +3,12 @@ import Editor from "@monaco-editor/react";
 import ReactDiffViewer from "react-diff-viewer-continued";
 import { runAgent, type AgentResult, type AgentStep } from "./agent";
 import { StepTimeline } from "./StepTimeline";
-import { loadHistory, saveHistory, type HistoryItem } from "./history";
+import {
+  loadHistory,
+  saveHistory,
+  computeStats,
+  type HistoryItem,
+} from "./history";
 import {
   AVAILABLE_RULES,
   loadRulePrefs,
@@ -25,6 +30,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [rulePrefs, setRulePrefs] = useState<Record<string, boolean>>({});
+  const stats = computeStats(history);
 
   useEffect(() => {
     setHistory(loadHistory());
@@ -63,7 +69,6 @@ function App() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      {/* 侧边栏 */}
       <aside
         style={{
           width: 240,
@@ -74,6 +79,13 @@ function App() {
         }}
       >
         <h3 style={{ marginTop: 0 }}>历史记录</h3>
+        {/* 新增：统计 */}
+        <div style={{ marginBottom: 12, fontSize: 12, color: "#666" }}>
+          <div>共 {stats.total} 次审查</div>
+          <div>一次成功：{stats.firstTrySuccess}</div>
+          <div>重试成功：{stats.retrySuccess}</div>
+          <div>失败：{stats.failed}</div>
+        </div>
         {history.length === 0 && (
           <p style={{ color: "#999", fontSize: 13 }}>暂无记录</p>
         )}
@@ -101,11 +113,9 @@ function App() {
         </div>
       </aside>
 
-      {/* 主区域 */}
       <main style={{ flex: 1, padding: 20, fontFamily: "system-ui" }}>
         <h1>代码审查 Agent</h1>
 
-        {/* 规则面板 */}
         <div
           style={{
             marginBottom: 12,
@@ -144,7 +154,7 @@ function App() {
           options={{ minimap: { enabled: false }, fontSize: 14 }}
         />
 
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 12, display: "flex", gap: 12 }}>
           <button onClick={handleReview} disabled={loading}>
             {loading ? "审查中..." : "开始审查"}
           </button>
