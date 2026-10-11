@@ -1,3 +1,10 @@
+/**
+ * 「Agent 执行过程」时间线：把每一步工具调用列出来。
+ * 点开某一步可以看到：当时的报错、以及和上一步相比代码改了什么（diff）。
+ *
+ * 目的：把黑盒 Agent 变成「看得见的流程」。
+ */
+
 import { useState } from "react";
 import ReactDiffViewer from "react-diff-viewer-continued";
 import type { AgentStep } from "./agent";
@@ -7,6 +14,7 @@ interface Props {
 }
 
 export function StepTimeline({ steps }: Props) {
+  // 当前展开了哪一步；null = 全部收起
   const [expanded, setExpanded] = useState<number | null>(null);
 
   if (steps.length === 0) return null;
@@ -19,6 +27,7 @@ export function StepTimeline({ steps }: Props) {
           const errorCount = step.errors.length;
           const isOpen = expanded === step.index;
 
+          // 工具名 → 给人看的中文标签
           const toolLabel = (() => {
             switch (step.tool) {
               case "run_eslint":
@@ -36,11 +45,11 @@ export function StepTimeline({ steps }: Props) {
             }
           })();
 
-          // 上一步的代码（用于 diff）
+          // 上一步的代码快照，用来做 diff
           const prevStep = i > 0 ? steps[i - 1] : null;
           const prevCode = prevStep?.code ?? null;
 
-          // 只有修复类工具才可能改代码，校验类不算
+          // 只有修复类工具才会改代码；纯检查步骤不显示「代码有变化」
           const isFixStep =
             step.tool === "auto_fix" || step.tool === "fix_code";
           const codeChanged =
@@ -56,7 +65,7 @@ export function StepTimeline({ steps }: Props) {
                 overflow: "hidden",
               }}
             >
-              {/* 标题行：点击展开/收起 */}
+              {/* 标题行：点击展开/收起详情 */}
               <div
                 style={{
                   display: "flex",
@@ -101,10 +110,9 @@ export function StepTimeline({ steps }: Props) {
                 </span>
               </div>
 
-              {/* 展开区域 */}
+              {/* 展开后：报错列表 + 与上一步的 diff */}
               {isOpen && (
                 <div style={{ padding: "0 10px 10px" }}>
-                  {/* 报错列表 */}
                   {errorCount > 0 && (
                     <div style={{ marginBottom: 8 }}>
                       <strong style={{ fontSize: 13 }}>报错：</strong>
@@ -118,7 +126,6 @@ export function StepTimeline({ steps }: Props) {
                     </div>
                   )}
 
-                  {/* 与上一步的 diff */}
                   {codeChanged && prevCode !== null ? (
                     <div>
                       <strong style={{ fontSize: 13 }}>

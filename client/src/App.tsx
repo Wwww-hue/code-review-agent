@@ -1,3 +1,13 @@
+/**
+ *
+ * 布局：
+ * - 左边：历史记录 + 统计
+ * - 右边：规则勾选 → Monaco 编辑器 → 开始审查 → 图表/时间线 → 最终 diff
+ *
+ * 真正干活的是 runAgent()（见 agent.ts），这里只负责：
+ * 收集用户输入、展示过程、保存历史。
+ */
+
 import { useState, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import ReactDiffViewer from "react-diff-viewer-continued";
@@ -18,6 +28,7 @@ import {
   buildRules,
 } from "./rules";
 
+/** 打开页面时编辑器里的默认示例代码 */
 const DEFAULT_CODE = `var x = 1
 console.log(x)
 function foo() {
@@ -25,17 +36,18 @@ function foo() {
 }
 `;
 
-const HISTORY_PAGE_SIZE = 10;
+const HISTORY_PAGE_SIZE = 10; // 侧边栏每页显示几条历史
 
 function App() {
-  const [code, setCode] = useState(DEFAULT_CODE);
-  const [result, setResult] = useState<AgentResult | null>(null);
-  const [steps, setSteps] = useState<AgentStep[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [code, setCode] = useState(DEFAULT_CODE); // 编辑器里的代码
+  const [result, setResult] = useState<AgentResult | null>(null); // 最终结果
+  const [steps, setSteps] = useState<AgentStep[]>([]); // 实时步骤（过程可视化）
+  const [loading, setLoading] = useState(false); // 是否正在审查
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [rulePrefs, setRulePrefs] = useState<Record<string, boolean>>({});
   const [historyPage, setHistoryPage] = useState(1);
 
+  // 组件挂载时，从 localStorage 恢复历史和规则偏好
   useEffect(() => {
     setHistory(loadHistory());
     setRulePrefs(loadRulePrefs());
@@ -48,16 +60,18 @@ function App() {
     historyPage * HISTORY_PAGE_SIZE,
   );
 
+  /** 点「开始审查」：启动 Agent，边跑边把步骤推到 UI */
   const handleReview = async () => {
     setLoading(true);
     setSteps([]);
     setResult(null);
     try {
+      // 第三个参数是 onStep 回调：每完成一步就追加到 steps
       const r = await runAgent(code, buildRules(rulePrefs), (step) => {
         setSteps((prev) => [...prev, step]);
       });
       setResult(r);
-      setHistory(saveHistory(r));
+      setHistory(saveHistory(r)); // 顺便写入历史
       setHistoryPage(1);
     } catch (e) {
       alert("审查失败：" + (e as Error).message);
@@ -66,6 +80,7 @@ function App() {
     }
   };
 
+  /** 点某条历史：把当时的代码和结果填回主区 */
   const handleHistoryClick = (item: HistoryItem) => {
     setCode(item.originalCode);
     setResult({
@@ -83,6 +98,7 @@ function App() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
+      {/* ========== 左侧：历史侧边栏 ========== */}
       <aside
         style={{
           width: 240,
@@ -128,6 +144,7 @@ function App() {
           ))}
         </div>
 
+        {/* 历史分页 */}
         {totalPages > 1 && (
           <div
             style={{
@@ -159,9 +176,11 @@ function App() {
         )}
       </aside>
 
+      {/* ========== 右侧：主工作区 ========== */}
       <main style={{ flex: 1, padding: 20, fontFamily: "system-ui" }}>
         <h1>代码审查 Agent</h1>
 
+        {/* 规则勾选：改完立刻 saveRulePrefs */}
         <div
           style={{
             marginBottom: 12,
@@ -192,6 +211,7 @@ function App() {
           </div>
         </div>
 
+        {/* Monaco：用户在这里粘贴/编辑 JS */}
         <Editor
           height="400px"
           defaultLanguage="javascript"
@@ -206,10 +226,12 @@ function App() {
           </button>
         </div>
 
+        {/* 过程可视化*/}
         <ConvergenceChart steps={steps} hasResult={!!result} />
         <CostDashboard result={result} hasSteps={steps.length > 0} />
         <StepTimeline steps={steps} />
 
+        {/* 最终结果：状态文案 + 复制按钮 + 整体 diff */}
         {result && (
           <div style={{ marginTop: 20 }}>
             <h3>

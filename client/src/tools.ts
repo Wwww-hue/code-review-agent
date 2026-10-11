@@ -1,4 +1,26 @@
+/**
+ * 定义 Agent 能用的「工具菜单」，发给大模型（LLM）。
+ *
+ * 【什么是 Tool Calling（工具调用）？】
+ * 普通聊天里，模型只能回文字。
+ * 开了 tool calling 后，模型可以回复：「请帮我调用某某工具，参数是……」
+ * 然后我们的代码真正去执行这个工具，再把结果塞回对话，模型继续思考。
+ *
+ * 本文件只负责「描述工具长什么样」，真正执行在 agent.ts 里。
+ *
+ * 结构说明（OpenAI / DeepSeek 通用格式）：
+ * {
+ *   type: "function",
+ *   function: {
+ *     name: 工具名（代码里用这个名字匹配）,
+ *     description: 给模型看的说明（模型靠这个决定要不要用）,
+ *     parameters: 参数的 JSON Schema（模型按这个填参数）
+ *   }
+ * }
+ */
+
 export const AGENT_TOOLS = [
+  // ---------- 工具 1：快速 ESLint 检查 ----------
   {
     type: "function" as const,
     function: {
@@ -10,10 +32,12 @@ export const AGENT_TOOLS = [
         properties: {
           code: { type: "string", description: "要检查的 JavaScript 代码" },
         },
-        required: ["code"],
+        required: ["code"], // 调用时必须带上 code
       },
     },
   },
+
+  // ---------- 工具 2：深度检查（更慢、更全） ----------
   {
     type: "function" as const,
     function: {
@@ -29,6 +53,8 @@ export const AGENT_TOOLS = [
       },
     },
   },
+
+  // ---------- 工具 3：确定性自动修复（零 token 成本） ----------
   {
     type: "function" as const,
     function: {
@@ -44,6 +70,8 @@ export const AGENT_TOOLS = [
       },
     },
   },
+
+  // ---------- 工具 4：让 LLM 自己改代码（贵，但能处理复杂逻辑） ----------
   {
     type: "function" as const,
     function: {
@@ -64,6 +92,8 @@ export const AGENT_TOOLS = [
       },
     },
   },
+
+  // ---------- 工具 5：主动结束（有时模型会忘，agent.ts 里还有硬性兜底） ----------
   {
     type: "function" as const,
     function: {

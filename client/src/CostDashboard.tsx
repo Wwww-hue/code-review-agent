@@ -1,3 +1,12 @@
+/**
+ * 【这个文件做什么？】
+ * 「运行成本」小仪表盘：总步骤、校验次数、自动修复、LLM 修复、回滚、耗时。
+ *
+ * 为什么单独看 LLM 修复？
+ * 因为 auto_fix 几乎零成本，而 fix_code 每次都要花 token——
+ * 让用户直观看到贵不贵。
+ */
+
 import type { AgentResult } from "./agent";
 
 interface Props {
@@ -6,10 +15,9 @@ interface Props {
 }
 
 export function CostDashboard({ result, hasSteps }: Props) {
-  // 历史回填：有 result 但没 steps → 不渲染
+  // 历史回看：有结果但没有过程 steps → 不展示（避免全是 0 的假仪表盘）
   if (result && !hasSteps) return null;
 
-  // 用 result 或"空数据"
   const steps = result?.steps ?? [];
   const totalSteps = steps.length;
   const lintCount = steps.filter((s) => s.tool === "run_eslint").length;
@@ -22,6 +30,7 @@ export function CostDashboard({ result, hasSteps }: Props) {
     { label: "总步骤", value: totalSteps },
     { label: "ESLint 校验", value: lintCount },
     { label: "自动修复", value: autoFixCount },
+    // highlight：有 LLM 修复 / 回滚时用红色提醒「这可能贵 / 不顺利」
     { label: "LLM 修复", value: llmFixCount, highlight: llmFixCount > 0 },
     { label: "回滚次数", value: rollbackCount, highlight: rollbackCount > 0 },
     { label: "总耗时", value: `${durationSec}s` },
